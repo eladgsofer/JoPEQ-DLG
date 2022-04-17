@@ -198,12 +198,12 @@ def run_dlg(img_index, model=None, train_loader=None, test_loader=None, noise_fu
     # plt.imshow(dst[img_index][0])
     # plt.axis('off')
 
-    plt.figure(figsize=(12, 8))
-    for i in range(round(iters / 10)):
-        plt.subplot(int(np.ceil(iters / 100)), 10, i + 1)
-        plt.imshow(history[i])
-        plt.title("iter=%d" % (i * 10))
-        plt.axis('off')
+    # plt.figure(figsize=(12, 8))
+    # for i in range(round(iters / 10)):
+    #     plt.subplot(int(np.ceil(iters / 100)), 10, i + 1)
+    #     plt.imshow(history[i])
+    #     plt.title("iter=%d" % (i * 10))
+    #     plt.axis('off')
     return current_loss.item()
 
 
@@ -291,8 +291,8 @@ def run_epsilon_dlg_idlg_tests(image_number_list,epsilon_list,bit_rate_lst, algo
     # run all the tests:
     for k, bit_rate in enumerate(bit_rate_lst):
         for i, epsilon in enumerate(epsilon_list):
-            print("#### epsilon {0}".format(epsilon))
             for j,n in enumerate(image_number_list):
+
                 extract_img = run_dlg if algo == 'DLG' else iDLG.run_idlg
 
                 loss_per_epsilon_matrix[k, i, j] = extract_img(n,
@@ -304,13 +304,15 @@ def run_epsilon_dlg_idlg_tests(image_number_list,epsilon_list,bit_rate_lst, algo
                                                             noise_func=add_uveqFed,
                                                             read_grads=-1,
                                                             model_number=0)
-            #loss_per_epsilon_matrix[i, j] = i+j
+                # loss_per_epsilon_matrix[k,i, j] = k+i+j
+                print("#### image {0} epsilon {1} bitRate {2} loss {3}####".format(j, epsilon, bit_rate,loss_per_epsilon_matrix[k,i,j]))
             print("bit_rate: {0} epsilon:{1} average loss: {2} loss values:{3}".format(bit_rate, epsilon,np.mean(loss_per_epsilon_matrix[k][i]),loss_per_epsilon_matrix[k][i]))
 
     # # save the loss into a matrix
 
     #     np.save(f, loss_per_epsilon_matrix[0,:,:])
     # np.savetxt('output/epsilon_mat'+algo+'.txt', loss_per_epsilon_matrix[0,:,:], fmt='%1.4e')
+
     # with open('output/TOTAL_MAT'+algo+'.npy', 'wb') as f:
     #     pickle.dump(loss_per_epsilon_matrix, f)
 
@@ -394,10 +396,14 @@ if __name__ == "__main__":
     # print("image= {0}".format(K))
     # [0.1, 0.08, 0.06, 0.03, 0.01, 0.003, 0.001, 0.0003, 0.0001]
     # imagen ids, epsilon list,
+    epsilon_lst = [10,33,100,333,1000,3333,10000,100000]
+    bit_rate_lst = [4,8,16,32]
 
-    epsilon_lst = [10,]
-    bit_rate_lst = [8]
-    img_lst = [9,10,11,13]
+    img_lst = list(range(30,45))
+    epsilon_lst = [333]
+    bit_rate_lst = [16]
+
+    img_lst = [15]
     # run_epsilon_dlg_idlg_tests(,[0.1,0.08,0.06,0.03,0.01,0.003,0.001,0.0003,0.0001],'DLG')
     run_epsilon_dlg_idlg_tests(img_lst, epsilon_lst, bit_rate_lst=bit_rate_lst, algo=  'DLG')
     # run_epsilon_dlg_idlg_tests([9],[0.0003,0.0001],'DLG')
@@ -441,3 +447,25 @@ if __name__ == "__main__":
 #     plt.grid(visible=True, which='minor')
 #     plt.xlabel("2/epsilon")
 #     plt.ylabel("loss")
+
+# plt.figure()
+# font = {'weight': 'bold','size': 16}
+# plt.rc('font', **font)
+# epsilont_lst = [10,100,1000,10000,100000]
+# bit_rate_lst = [2,4,8,16,32]
+# with open("/Users/elad.sofer/src/Engineering Project/dlg/output/TOTAL_MATDLG.npy", "rb") as fd:
+#     mat = pickle.load(fd)
+#
+# for k in range(0,mat.shape[0]):
+#     plt.plot([2/e for e in epsilont_lst], np.mean(mat[k,:,:],axis=1), '-*')
+#     plt.xscale("log")
+#     plt.yscale("log")
+#
+#     plt.title("JoPEQ DLG attack vs. noise levels")
+#     plt.grid(visible=True,axis="y")
+#     plt.grid(visible=True,which='minor')
+#     plt.xlabel("2/epsilon")
+#     plt.ylabel("loss")
+#
+# plt.legend(["4compressionRate", "8compressionRate", "16compressionRate", "32compressionRate"])
+pass
