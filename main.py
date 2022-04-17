@@ -26,7 +26,6 @@ sys.path.append(tomer_path)
 
 from models import LENETLayer
 from federated_utils import PQclass
-
 parser = argparse.ArgumentParser(description='Deep Leakage from Gradients.')
 parser.add_argument('--index', type=int, default="25",
                     help='the index for leaking images on CIFAR.')
@@ -64,7 +63,6 @@ parser.add_argument('--attack', type=str, default='JOPEQ',
                     help="DLG/iDLG attack type ")
 args = parser.parse_args()
 
-num_of_iterations = 200
 device = "cpu"
 if torch.cuda.is_available():
     device = "cuda"
@@ -98,9 +96,124 @@ def add_uveqFed(original_dy_dx, epsilon, bit_rate):
 
     return noised_dy_dx
 
+class dlg_cls():
+    def __init__(self,model=None, train_loader=None, test_loader=None, noise_func = lambda x, y, z: x):
+        self.gt_data = tp(dst[img_index][0]).to(device)
+        if len(args.image) > 1:
+            self.gt_data = Image.open(args.image)
+            self.gt_data = tp(self.gt_data).to(device)
+        self.gt_data = self.gt_data.view(1, *self.gt_data.size())
+        self.model = model
+        self.train_loader = train_loader
+        self.test_loader = test_loader
+        self.noise_func = noise_func
+    def __call__(self, img_index, seed=1234,learning_epoches=0,read_grads= -1, epsilon=0, bit_rate=1,num_of_iterations=200):
+        self.load_image(img_index)
+        self.config_model(seed)
+        self.train_model(learning_epoches)
+        if (read_grads == -1):
+            self.compute_gradients()
+        else:
+            self.load_model_and_gradients(read_grads)
+        self.apply_noise(epsilon,bit_rate)
+        return self.dlg(num_of_iterations=num_of_iterations)
+
+    def load_image(self, img_index):
+        self.gt_label = torch.Tensor([dst[img_index][1]]).long().to(device)
+        self.gt_label = self.gt_label.view(1, )
+        self.gt_onehot_label = label_to_onehot(self.gt_label)
+    def config_model(self,seed=1234):
+        self.model = LeNet().to(device)
+        torch.manual_seed(seed)
+        self.model.apply(weights_init)
+        self.criterion = cross_entropy_for_onehot
+        self.optimizer = optim.Adam(self.model.parameters(), lr=0.001)
+
+    def train_model(self,learning_epoches=0):
+        if (learning_epoches > 0):
+            self.model.train_nn(
+                train_loader=self.train_loader,
+                optimizer=self.optimizer,
+                criterion=self.criterion,
+                epoch_num=learning_epoches,
+                test_loader=self.test_loader)
+            self.model.test_nn(self.test_loader, self.criterion)
+    def compute_gradients(self):
+        self.pred = self.model(self.gt_data)
+        y = self.criterion(self.pred, self.gt_onehot_label)
+        self.dy_dx = torch.autograd.grad(y, self.model.parameters())
+        return self.dy_dx
+    def load_model_and_gradients(self,read_grads):
+        grad_checkpoint_address = "./fed-ler_checkpoints/grad/checkpoint{0}_{1}.pk".format(model_number, read_grads)
+        global_checkpoint_address = "./fed-ler_checkpoints/global/checkpoint{0}_{1}.pk".format(model_number, read_grads)
+        fed_ler_grad_state_dict = torch.load(grad_checkpoint_address)
+
+        global_model = torch.load(global_checkpoint_address)
+        self.model = global_model
+        # luckily the state dict is saved in exactly the same order as the gradients are so we can easily transfer them
+        self.dy_dx = tuple([fed_ler_grad_state_dict[key] for key in fed_ler_grad_state_dict.keys()])
+        return self.dy_dx
+    def apply_noise(self,epsilon,bit_rate):
+        if (epsilon > 0 or args.attack=="quantization"):
+            self.original_dy_dx = self.noise_func(list((_.detach().clone() for _ in self.dy_dx)), epsilon, bit_rate)
+        else:
+            self.original_dy_dx = self.dy_dx
+    def dlg(self,num_of_iterations = 200):
+        # generate dummy data and label
+        dummy_data = torch.randn(self.gt_data.size()).to(device).requires_grad_(True)
+        dummy_label = torch.randn(self.gt_onehot_label.size()).to(device).requires_grad_(True)
+        # plt.figure()
+        # plt.imshow(tt(dummy_data[0].cpu()))
+
+        optimizer = torch.optim.LBFGS([dummy_data, dummy_label])
+
+        history = []
+        current_loss = torch.Tensor([1])
+        iters = 0
+        # for iters in range(num_of_iterations):
+        # while (iters < num_of_iterations):
+        while (current_loss.item() > 0.00001 and iters < num_of_iterations):
+
+            def closure():
+                optimizer.zero_grad()
+
+                dummy_pred = self.model(dummy_data)
+                dummy_onehot_label = F.softmax(dummy_label, dim=-1)
+                dummy_loss = self.criterion(dummy_pred, dummy_onehot_label)
+                dummy_dy_dx = torch.autograd.grad(dummy_loss, self.model.parameters(), create_graph=True)
+
+                grad_diff = 0
+                for gx, gy in zip(dummy_dy_dx, self.original_dy_dx):
+                    grad_diff += ((gx - gy) ** 2).sum()
+                grad_diff.backward()
+
+                return grad_diff
+
+            optimizer.step(closure)
+            if iters % 10 == 0:
+                current_loss = closure()
+                print(iters, "%.4f" % current_loss.item())
+                history.append(tt(dummy_data[0].cpu()))
+            iters = iters + 1
+        # plt.figure()
+        # plt.subplot(1, 2, 1)
+        # plt.imshow(tt(dummy_data[0].cpu()))
+        # plt.axis('off')
+        #
+        # plt.subplot(1, 2, 2)
+        # plt.imshow(dst[img_index][0])
+
+        # plt.axis('off')
+        # plt.figure(figsize=(12, 8))
+        # for i in range(round(iters / 10)):
+        #     plt.subplot(int(np.ceil(iters / 100)), 10, i + 1)
+        #     plt.imshow(history[i])
+        #     plt.title("iter=%d" % (i * 10))
+        #     plt.axis('off')
+        return current_loss.item()
+
 
 def run_dlg(img_index, model=None, train_loader=None, test_loader=None, noise_func = lambda x, y, z: x, learning_epoches = 0, epsilon=0.1, bit_rate=1,read_grads=-1,model_number=0):
-
     gt_data = tp(dst[img_index][0]).to(device)
     if len(args.image) > 1:
         gt_data = Image.open(args.image)
@@ -206,8 +319,6 @@ def run_dlg(img_index, model=None, train_loader=None, test_loader=None, noise_fu
     #     plt.axis('off')
     return current_loss.item()
 
-
-
 # l = []
 # for i in range(10):
 #     l.append(test_image(img_index,learning_iterations=500+50*i))
@@ -293,17 +404,26 @@ def run_epsilon_dlg_idlg_tests(image_number_list,epsilon_list,bit_rate_lst, algo
         for i, epsilon in enumerate(epsilon_list):
             for j,n in enumerate(image_number_list):
 
-                extract_img = run_dlg if algo == 'DLG' else iDLG.run_idlg
-
-                loss_per_epsilon_matrix[k, i, j] = extract_img(n,
-                                                            train_loader=train_loader,
-                                                            test_loader=test_loader,
-                                                            learning_epoches=0,
-                                                            epsilon=epsilon,
-                                                            bit_rate=bit_rate,
-                                                            noise_func=add_uveqFed,
-                                                            read_grads=-1,
-                                                            model_number=0)
+                # extract_img = run_dlg if algo == 'DLG' else iDLG.run_idlg
+                dlg = dlg_cls(
+                    train_loader=train_loader,
+                    test_loader=test_loader,
+                    noise_func=add_uveqFed)
+                loss_per_epsilon_matrix[k, i, j] = dlg(
+                    img_index = n,
+                    learning_epoches=0,
+                    read_grads=-1,
+                    epsilon=epsilon,
+                    bit_rate=bit_rate)
+                # loss_per_epsilon_matrix[k, i, j] = extract_img(n,
+                #                                             train_loader=train_loader,
+                #                                             test_loader=test_loader,
+                #                                             learning_epoches=0,
+                #                                             epsilon=epsilon,
+                #                                             bit_rate=bit_rate,
+                #                                             noise_func=add_uveqFed,
+                #                                             read_grads=-1,
+                #                                             model_number=0)
                 # loss_per_epsilon_matrix[k,i, j] = k+i+j
                 print("#### image {0} epsilon {1} bitRate {2} loss {3}####".format(j, epsilon, bit_rate,loss_per_epsilon_matrix[k,i,j]))
             print("bit_rate: {0} epsilon:{1} average loss: {2} loss values:{3}".format(bit_rate, epsilon,np.mean(loss_per_epsilon_matrix[k][i]),loss_per_epsilon_matrix[k][i]))
