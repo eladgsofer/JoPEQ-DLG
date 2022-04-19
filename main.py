@@ -73,9 +73,12 @@ img_index = args.index
 
 
 import iDLG
+
 def run_iteration_dlg_idlg_tests(image_number_list,iteration_list, algo='DLG'):
+
     plt.xscale("log")
-    loss_per_epsilon_matrix = np.zeros([len(iteration_list),len(image_number_list)])
+    loss_per_iter_matrix = np.zeros([len(iteration_list),len(image_number_list)])
+    grads_norm_mat = np.zeros([len(iteration_list), len(image_number_list)])
     # opening datasets
     dataset = getattr(datasets, args.dataset)
     train_loader = torch.utils.data.DataLoader(
@@ -87,27 +90,32 @@ def run_iteration_dlg_idlg_tests(image_number_list,iteration_list, algo='DLG'):
         batch_size=LeNet.BATCH_SIZE, shuffle=True)
 
     # run all the tests:
-    for j,n in enumerate(image_number_list):
-        dlg = dlg_cls(
-            train_loader=train_loader,
-            test_loader=test_loader,
-            args=args,
-            noise_func=add_uveqFed)
-        dlg.load_image(n)
-        dlg.config_model()
-        for i, iter in enumerate(iteration_list):
-            if i > 0:
-                dlg.train_model(1)
-            dlg.compute_gradients()
-            loss_per_epsilon_matrix[i, j] = dlg.dlg()
-        #loss_per_epsilon_matrix[i, j] = i+j
+    dlg = dlg_cls(
+        train_loader=train_loader,
+        test_loader=test_loader,
+        args=args,
+        noise_func=add_uveqFed)
+    dlg.config_model()
+    for i, iter in enumerate(iteration_list):
+        print("iteration number {0}".format(i))
+        if i > 0:
+            dlg.train_model(1)
+        for j, n in enumerate(image_number_list):
+            dlg.load_image(n)
+            gradients = dlg.compute_gradients()
+            grads_norm_mat[i,j] = sum([x.norm(p=2) ** 2 for x in gradients]) ** (0.5)
+            loss_per_iter_matrix[i, j] = dlg.dlg()
+        #loss_per_iter_matrix[i, j] = i+j
         # print("iter:{0} average loss: {1} loss values:{2}".format(iter,np.mean(loss_per_epsilon_matrix[i]),loss_per_epsilon_matrix[i]))
 
     # save the loss into a matrix
     # with open('output/epsilon_mat'+algo+'.npy', 'wb') as f:
     #     np.save(f, loss_per_epsilon_matrix)
     # np.savetxt('output/epsilon_mat'+algo+'.txt', loss_per_epsilon_matrix, fmt='%1.4e')
-
+    with open('output/ITER_MAT_'+algo+'_new.npy', 'wb') as f:
+        pickle.dump(loss_per_iter_matrix, f)
+    with open('output/ITER_GRAD_MAT_NORM_'+algo+'_new.npy', 'wb') as f:
+        pickle.dump(grads_norm_mat, f)
     # plot the accuracy
     plt.figure()
     font = {
@@ -115,10 +123,11 @@ def run_iteration_dlg_idlg_tests(image_number_list,iteration_list, algo='DLG'):
         'size': 16}
 
     plt.rc('font', **font)
-    plt.plot(iteration_list,np.mean(loss_per_epsilon_matrix,axis=1),linewidth=3)
+    plt.plot(iteration_list,np.mean(np.log(loss_per_iter_matrix),axis=1),linewidth=3)
     plt.title("dlg loss after training the model")
     plt.grid(visible=True,axis="y")
     plt.grid(visible=True,which='minor')
+    plt.plot(iteration_list,np.mean(grads_norm_mat,axis=1),linewidth=3)
     plt.xlabel("epoches")
     plt.ylabel("loss")
 
@@ -163,15 +172,6 @@ def run_epsilon_dlg_idlg_tests(image_number_list,epsilon_list,bit_rate_lst, algo
                     read_grads=-1,
                     epsilon=epsilon,
                     bit_rate=bit_rate)
-                # loss_per_epsilon_matrix[k, i, j] = extract_img(n,
-                #                                             train_loader=train_loader,
-                #                                             test_loader=test_loader,
-                #                                             learning_epoches=0,
-                #                                             epsilon=epsilon,
-                #                                             bit_rate=bit_rate,
-                #                                             noise_func=add_uveqFed,
-                #                                             read_grads=-1,
-                #                                             model_number=0)
                 # loss_per_epsilon_matrix[k,i, j] = k+i+j
                 print("#### image {0} epsilon {1} bitRate {2} loss {3}####".format(j, epsilon, bit_rate,loss_per_epsilon_matrix[k,i,j]))
             print("bit_rate: {0} epsilon:{1} average loss: {2} loss values:{3}".format(bit_rate, epsilon,np.mean(loss_per_epsilon_matrix[k][i]),loss_per_epsilon_matrix[k][i]))
@@ -181,8 +181,8 @@ def run_epsilon_dlg_idlg_tests(image_number_list,epsilon_list,bit_rate_lst, algo
     #     np.save(f, loss_per_epsilon_matrix[0,:,:])
     # np.savetxt('output/epsilon_mat'+algo+'.txt', loss_per_epsilon_matrix[0,:,:], fmt='%1.4e')
 
-    # with open('output/TOTAL_MAT'+algo+'.npy', 'wb') as f:
-    #     pickle.dump(loss_per_epsilon_matrix, f)
+    with open('output/TOTAL_MAT'+algo+'.npy', 'wb') as f:
+        pickle.dump(loss_per_epsilon_matrix, f)
 
     # # plot the accuracy
     # plt.figure()
@@ -267,14 +267,14 @@ if __name__ == "__main__":
     epsilon_lst = [10,33,100,333,1000,3333,10000,100000]
     bit_rate_lst = [4,8,16,32]
 
-    img_lst = list(range(30,45))
-    epsilon_lst = [333]
-    bit_rate_lst = [16]
-
-    # img_lst = [15]
+    img_lst       = list(range(30,45))
+    epsilon_lst   = [333]
+    bit_rate_lst  = [16]
+    iteration_lst = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]
+    # img_lst = [16]
     # run_epsilon_dlg_idlg_tests(,[0.1,0.08,0.06,0.03,0.01,0.003,0.001,0.0003,0.0001],'DLG')
     # run_epsilon_dlg_idlg_tests(img_lst, epsilon_lst, bit_rate_lst=bit_rate_lst, algo=  'DLG')
-    run_iteration_dlg_idlg_tests(img_lst,[0,1,2,3,4,5,6],'DLG')
+    run_iteration_dlg_idlg_tests(img_lst, iteration_lst,'DLG')
     # run_epsilon_dlg_idlg_tests([9],[0.0003,0.0001],'DLG')
     # run_epsilon_dlg_idlg_tests([9,10,11,12,13],[0.14,0.12,0.1,0.08,0.06,0.03,0.01,0.003,0.001,0.0003,0.0001,0.00001],'DLG')
 
