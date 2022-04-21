@@ -9,7 +9,8 @@ import torch
 import torchvision
 from torchvision import datasets, transforms
 print(torch.__version__, torchvision.__version__)
-
+import os
+os.system('')
 from utils import label_to_onehot, cross_entropy_for_onehot
 import random
 from torch.distributions.laplace import Laplace
@@ -61,9 +62,10 @@ parser.add_argument('--attack', type=str, default='JOPEQ',
                     help="DLG/iDLG attack type ")
 args = parser.parse_args()
 
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 device = "cpu"
-if torch.cuda.is_available():
-    device = "cuda"
+# if torch.cuda.is_available():
+#     device = "cuda"
 print("Running on %s" % device)
 
 
@@ -73,6 +75,63 @@ img_index = args.index
 
 
 import iDLG
+def train_model(image_number_list,iteration_list, algo='DLG'):
+    plt.xscale("log")
+    acc_vec = np.zeros([len(iteration_list)])
+    grads_norm_mat = np.zeros([len(iteration_list), len(image_number_list)])
+    # opening datasets
+    dataset = getattr(datasets, args.dataset)
+    train_loader = torch.utils.data.DataLoader(
+        dataset("~/.torch", train=True, download=True, transform=transforms.Compose(
+            [transforms.Resize(32), transforms.CenterCrop(32), transforms.ToTensor()])),
+        batch_size=LeNet.BATCH_SIZE, shuffle=True)
+
+    test_loader = torch.utils.data.DataLoader(
+        dataset("~/.torch", train=False, download=True, transform=transforms.Compose(
+            [transforms.Resize(32), transforms.CenterCrop(32), transforms.ToTensor()])),
+        batch_size=LeNet.BATCH_SIZE, shuffle=True)
+
+    # run all the tests:
+    dlg = dlg_cls(
+        train_loader=train_loader,
+        test_loader=test_loader,
+        args=args,
+        noise_func=add_uveqFed)
+    dlg.config_model()
+    for i, iter in enumerate(iteration_list):
+        print("iteration number {0}".format(i))
+        if i > 0:
+            acc_vec[i] = dlg.train_model(1)
+        for j, n in enumerate(image_number_list):
+            dlg.load_image(n)
+            gradients = dlg.compute_gradients()
+            grads_norm_mat[i, j] = sum([x.norm(p=2) ** 2 for x in gradients]) ** (0.5)
+    with open('output/TRAINING_TEST_GRADS'+algo+'.npy', 'wb') as f:
+        pickle.dump(grads_norm_mat, f)
+    with open('output/TRAINING_TEST_ACC' + algo + '.npy', 'wb') as f:
+        pickle.dump(acc_vec, f)
+    # plot the accuracy
+    plt.figure()
+    font = {
+        'weight': 'bold',
+        'size': 16}
+    plt.rc('font', **font)
+    plt.plot(iteration_list, acc_vec, linewidth=3)
+    plt.title("Lenet acc after training the model")
+    plt.grid(visible=True, axis="y")
+    plt.grid(visible=True, which='minor')
+    plt.xlabel("epoches")
+    plt.ylabel("accuracy[%]")
+    plt.figure()
+    plt.plot(iteration_list, np.mean(grads_norm_mat, axis=1), linewidth=3)
+    plt.title("gradients L2 Norm after training the model")
+    plt.grid(visible=True, axis="y")
+    plt.grid(visible=True, which='minor')
+    plt.xlabel("epoches")
+    plt.ylabel("mean L2 Norm")
+    plt.show()
+
+
 
 def run_iteration_dlg_idlg_tests(image_number_list,iteration_list, algo='DLG'):
 
@@ -112,10 +171,10 @@ def run_iteration_dlg_idlg_tests(image_number_list,iteration_list, algo='DLG'):
     # with open('output/epsilon_mat'+algo+'.npy', 'wb') as f:
     #     np.save(f, loss_per_epsilon_matrix)
     # np.savetxt('output/epsilon_mat'+algo+'.txt', loss_per_epsilon_matrix, fmt='%1.4e')
-    with open('output/ITER_MAT_'+algo+'_new.npy', 'wb') as f:
-        pickle.dump(loss_per_iter_matrix, f)
-    with open('output/ITER_GRAD_MAT_NORM_'+algo+'_new.npy', 'wb') as f:
-        pickle.dump(grads_norm_mat, f)
+    # with open('output/ITER_MAT_'+algo+'_new.npy', 'wb') as f:
+    #     pickle.dump(loss_per_iter_matrix, f)
+    # with open('output/ITER_GRAD_MAT_NORM_'+algo+'_new.npy', 'wb') as f:
+    #     pickle.dump(grads_norm_mat, f)
     # plot the accuracy
     plt.figure()
     font = {
@@ -130,6 +189,7 @@ def run_iteration_dlg_idlg_tests(image_number_list,iteration_list, algo='DLG'):
     plt.plot(iteration_list,np.mean(grads_norm_mat,axis=1),linewidth=3)
     plt.xlabel("epoches")
     plt.ylabel("loss")
+    plt.show()
 
 
 def run_epsilon_dlg_idlg_tests(image_number_list,epsilon_list,bit_rate_lst, algo='DLG'):
@@ -243,44 +303,52 @@ def run_dlg_idlg_tests(image_number_list,check_point_list,model_number, algo='DL
     plt.xlabel("iter")
     plt.ylabel("loss")
 
-
-if __name__ == "__main__":
-
-
+import cProfile,pstats
+def main():
     number_of_images = 1
     # image_number_list = [random.randrange(1, 1000, 1) for i in range(number_of_images)]
-    image_number_list = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,508]
-    #image_number_list = [3767]
+    image_number_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 508]
+    # image_number_list = [3767]
     # epsilon_list = [0.1,0.08,0.06,0.03,0.01,0.003,0.001,0.0003,0.0001]
     epsilon_list = [0]
     print("chosen images: {0}".format(image_number_list))
-    check_point_list = [i for i in range(0,400,100)]
+    check_point_list = [i for i in range(0, 400, 100)]
     model_number = 813665
     # run_dlg_idlg_tests(image_number_list,check_point_list,model_number,algo='DLG')
     # run_epsilon_dlg_idlg_tests(image_number_list,epsilon_list,algo='DLG')
 
-    #run_dlg(30, learning_epoches=50, epsilon=0)
+    # run_dlg(30, learning_epoches=50, epsilon=0)
     # K = 25
     # print("image= {0}".format(K))
     # [0.1, 0.08, 0.06, 0.03, 0.01, 0.003, 0.001, 0.0003, 0.0001]
     # imagen ids, epsilon list,
-    epsilon_lst = [10,33,100,333,1000,3333,10000,100000]
-    bit_rate_lst = [4,8,16,32]
+    epsilon_lst = [10, 33, 100, 333, 1000, 3333, 10000, 100000]
+    bit_rate_lst = [4, 8, 16, 32]
 
-    img_lst       = list(range(30,45))
-    epsilon_lst   = [333]
-    bit_rate_lst  = [16]
-    iteration_lst = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]
+    img_lst = list(range(30, 45))
+    epsilon_lst = [333]
+    bit_rate_lst = [16]
+    iteration_lst = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+    # iteration_lst = [0,1,2,3]
     # img_lst = [16]
     # run_epsilon_dlg_idlg_tests(,[0.1,0.08,0.06,0.03,0.01,0.003,0.001,0.0003,0.0001],'DLG')
     # run_epsilon_dlg_idlg_tests(img_lst, epsilon_lst, bit_rate_lst=bit_rate_lst, algo=  'DLG')
-    run_iteration_dlg_idlg_tests(img_lst, iteration_lst,'DLG')
+
+    profiler = cProfile.Profile()
+    profiler.enable()
+    run_iteration_dlg_idlg_tests(img_lst, iteration_lst, 'DLG')
+    profiler.disable()
+    stats = pstats.Stats(profiler).sort_stats('cumtime')
+    stats.dump_stats('../output/cpu-export-data')
     # run_epsilon_dlg_idlg_tests([9],[0.0003,0.0001],'DLG')
     # run_epsilon_dlg_idlg_tests([9,10,11,12,13],[0.14,0.12,0.1,0.08,0.06,0.03,0.01,0.003,0.001,0.0003,0.0001,0.00001],'DLG')
 
     # run_dlg(K)
-    plt.show()
+    # plt.show()
     pass
+
+if __name__ == "__main__":
+    main()
 
 
 

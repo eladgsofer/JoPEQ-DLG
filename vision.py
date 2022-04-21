@@ -46,8 +46,8 @@ class LeNet(nn.Module):
     def test_nn(self, test_loader,criterion):
         self.eval()
         device = "cpu"
-        if torch.cuda.is_available():
-            device = "cuda"
+        # if torch.cuda.is_available():
+        #     device = "cuda"
         correct = 0
         test_loss = 0
         accuracy_list = []
@@ -75,13 +75,14 @@ class LeNet(nn.Module):
         print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(test_loss, correct,
                                                                                      len(test_loader.dataset),
                                                                                      accuracy))
+        return accuracy
 
     def train_nn(self, train_loader, optimizer, criterion,test_loader,  epoch_num=3):
         self.train()
         # optimizer = torch.optim.LBFGS(model.parameters(), lr=0.0001)
         device = "cpu"
-        if torch.cuda.is_available():
-            device = "cuda"
+        # if torch.cuda.is_available():
+        #     device = "cuda"
         for epoch in range(epoch_num):
             correct = 0
             n = 0
@@ -108,7 +109,7 @@ class LeNet(nn.Module):
                 except:
                     continue
 
-                if batch_idx % 100 == 0:
+                if batch_idx % 300 == 0:
                     print(
                         'Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                             epoch, batch_idx * len(data),
@@ -119,7 +120,7 @@ class LeNet(nn.Module):
             train_loss /= len(train_loader.dataset)
             accuracy = 100. * correct / len(train_loader.dataset)
             accuracy_list.append(accuracy)
-            self.test_nn(test_loader,criterion)
+            # self.test_nn(test_loader,criterion)
 
             print(
                 '\nTrain set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(

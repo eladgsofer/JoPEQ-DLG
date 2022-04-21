@@ -5,6 +5,9 @@ from vision import LeNet, CNN, weights_init
 from PIL import Image
 from utils import label_to_onehot, cross_entropy_for_onehot
 import torch.nn.functional as F
+import numpy as np
+from skimage.metrics import structural_similarity as ssim
+import matplotlib.pyplot as plt
 
 import sys
 tomer_path = r"C:\Users\tomer\Documents\Final_project_git\federated_learning_uveqfed_dlg\Federated-Learning-Natalie"
@@ -13,9 +16,12 @@ sys.path.append(elad_path)
 sys.path.append(tomer_path)
 
 from federated_utils import PQclass
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 device = "cpu"
-if torch.cuda.is_available():
-    device = "cuda"
+# if torch.cuda.is_available():
+#     device = "cuda"
+
 def add_uveqFed(original_dy_dx, epsilon, bit_rate, args):
     noised_dy_dx = []
     args.epsilon = epsilon
@@ -37,6 +43,17 @@ def add_uveqFed(original_dy_dx, epsilon, bit_rate, args):
 
     return noised_dy_dx
 
+
+def mse(imageA, imageB):
+    # the 'Mean Squared Error' between the two images is the
+    # sum of the squared difference between the two images;
+    # NOTE: the two images must have the same dimension
+    err = np.sum((imageA.astype("float") - imageB.astype("float")) ** 2)
+    err /= float(imageA.shape[0] * imageA.shape[1])
+
+    # return the MSE, the lower the error, the more "similar"
+    # the two images are
+    return err
 class dlg_cls():
     def __init__(self,model=None, train_loader=None, test_loader=None, args=None, noise_func = lambda x, y, z, l: x):
         self.dst = getattr(datasets, args.dataset)("~/.torch", download=True)
@@ -61,6 +78,7 @@ class dlg_cls():
         return self.dlg(num_of_iterations=num_of_iterations)
 
     def load_image(self, img_index):
+        self.img_index = img_index
         self.gt_data = self.tp(self.dst[img_index][0]).to(device)
         if len(self.args.image) > 1:
             self.gt_data = Image.open(self.args.image)
@@ -76,6 +94,7 @@ class dlg_cls():
             self.model = model
         torch.manual_seed(seed)
         self.model.apply(weights_init)
+        self.model.to(device)
         self.criterion = cross_entropy_for_onehot
         self.optimizer = optim.Adam(self.model.parameters(), lr=0.001)
 
@@ -87,7 +106,7 @@ class dlg_cls():
                 criterion=self.criterion,
                 epoch_num=learning_epoches,
                 test_loader=self.test_loader)
-            self.model.test_nn(self.test_loader, self.criterion)
+            return self.model.test_nn(self.test_loader, self.criterion)
     def compute_gradients(self):
         self.pred = self.model(self.gt_data)
         y = self.criterion(self.pred, self.gt_onehot_label)
@@ -123,6 +142,8 @@ class dlg_cls():
         iters = 0
         # for iters in range(num_of_iterations):
         # while (iters < num_of_iterations):
+        MSE=0
+        SSIM=0
         while (current_loss.item() > 0.00001 and iters < num_of_iterations):
 
             def closure():
@@ -143,7 +164,12 @@ class dlg_cls():
             optimizer.step(closure)
             if iters % 10 == 0:
                 current_loss = closure()
-                print(iters, "%.4f" % current_loss.item())
+                reconstructedIm = np.asarray(self.tt(dummy_data[0].cpu()))
+                RecImShape = reconstructedIm.shape
+                groundTruthIm = np.asarray(self.dst[self.img_index][0]).reshape((RecImShape[0], RecImShape[1], RecImShape[2]))
+                MSE = mse(reconstructedIm,groundTruthIm)
+                SSIM = ssim(reconstructedIm,groundTruthIm,channel_axis=2)
+                print(iters, "%.4f" % current_loss.item()," MSE {0:.4f}, SSIM {1:.4f}".format(MSE,SSIM))
                 history.append(self.tt(dummy_data[0].cpu()))
             iters = iters + 1
         # plt.figure()
@@ -161,7 +187,8 @@ class dlg_cls():
         #     plt.imshow(history[i])
         #     plt.title("iter=%d" % (i * 10))
         #     plt.axis('off')
-        return current_loss.item()
+
+        return current_loss.item(), MSE, SSIM
 
 
 def run_dlg(img_index, model=None, train_loader=None, test_loader=None, noise_func = lambda x, y, z: x, learning_epoches = 0, epsilon=0.1, bit_rate=1,read_grads=-1,model_number=0):
