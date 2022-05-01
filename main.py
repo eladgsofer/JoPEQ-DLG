@@ -18,6 +18,8 @@ from vision import LeNet, CNN, weights_init
 import copy
 from dlg import dlg_cls, add_uveqFed, run_dlg
 import sys
+from datetime import datetime
+
 tomer_path = r"C:\Users\tomer\Documents\Final_project_git\federated_learning_uveqfed_dlg\Federated-Learning-Natalie"
 elad_path = r"/Users/elad.sofer/src/Engineering Project/federated_learning_uveqfed_dlg/Federated-Learning-Natalie"
 sys.path.append(elad_path)
@@ -75,6 +77,85 @@ img_index = args.index
 
 
 import iDLG
+def produce_image_pentas(image_number_list,iteration_list,epsilon_list,bit_rate_lst):
+    plt.xscale("log")
+    loss_per_iter_matrix = np.zeros([len(iteration_list), len(image_number_list)])
+    grads_norm_mat = np.zeros([len(iteration_list), len(image_number_list)])
+    # opening datasets
+    dataset = getattr(datasets, args.dataset)
+    train_loader = torch.utils.data.DataLoader(
+        dataset("~/.torch", train=True, download=True, transform=transforms.Compose(
+            [transforms.Resize(32), transforms.CenterCrop(32), transforms.ToTensor()])),
+        batch_size=LeNet.BATCH_SIZE, shuffle=True)
+
+    test_loader = torch.utils.data.DataLoader(
+        dataset("~/.torch", train=False, download=True, transform=transforms.Compose(
+            [transforms.Resize(32), transforms.CenterCrop(32), transforms.ToTensor()])),
+        batch_size=LeNet.BATCH_SIZE, shuffle=True)
+
+
+    now = datetime.now()
+
+
+    dt_string = now.strftime("%Y%m%d%H%M")
+    parent_path = "output/image_penta_run-"+str(dt_string)
+
+    os.mkdir(parent_path)
+    # run all the tests:
+    dlg = dlg_cls(
+        train_loader=train_loader,
+        test_loader=test_loader,
+        args=args,
+        noise_func=add_uveqFed)
+    dlg.config_model()
+    for i, iter in enumerate(iteration_list):
+        print("iteration number {0}".format(i))
+        if i > 0:
+            dlg.train_model(1)
+        for j, n in enumerate(image_number_list):
+            orig_img = dlg.load_image(n)
+            dlg.compute_gradients()
+
+            ## DLG ONLY ##
+            dlg.dlg()
+            dlg_only_img = dlg.final_image
+
+            for k, bit_rate in enumerate(bit_rate_lst):
+
+                ## QUANTIZATON ONLY ##
+                args.attack = 'quantization'
+                dlg.apply_noise(100, bit_rate, args=args)
+                dlg.dlg()
+                quant_only_img = dlg.final_image
+
+                for l, epsilon in enumerate(epsilon_list):
+
+                    ## JOPEQ ##
+                    args.attack = 'JOPEQ'
+                    args.privacy_noise = 'PPN'
+                    dlg.apply_noise(epsilon, bit_rate, args=args)
+                    dlg.dlg()
+                    JOPEQ_only_img = dlg.final_image
+
+                    ## LAPLACE ONLY ##
+                    args.attack = 'noise_only'
+                    args.privacy_noise = 'laplace'
+                    dlg.apply_noise(epsilon, bit_rate, args=args)
+                    dlg.dlg()
+                    laplace_only_img = dlg.final_image
+                    dir_path = parent_path+"/{0}_{1}_{2}_{3}".format(iter,bit_rate,epsilon,n)
+                    os.mkdir(dir_path)
+                    orig_img.save(dir_path+"/orig.jpg")
+                    dlg_only_img.save(dir_path + "/dlg_only.jpg")
+                    quant_only_img.save(dir_path + "/quantization_only.jpg")
+                    JOPEQ_only_img.save(dir_path + "/JOPEQ.jpg")
+                    laplace_only_img.save(dir_path + "/laplace_noise.jpg")
+
+
+
+
+
+
 def train_model(image_number_list,iteration_list, algo='DLG'):
     plt.xscale("log")
     acc_vec = np.zeros([len(iteration_list)])
@@ -163,7 +244,7 @@ def run_iteration_dlg_idlg_tests(image_number_list,iteration_list, algo='DLG'):
             dlg.load_image(n)
             gradients = dlg.compute_gradients()
             grads_norm_mat[i,j] = sum([x.norm(p=2) ** 2 for x in gradients]) ** (0.5)
-            loss_per_iter_matrix[i, j] = dlg.dlg()
+            (_,_,loss_per_iter_matrix[i, j]) = dlg.dlg()
         #loss_per_iter_matrix[i, j] = i+j
         # print("iter:{0} average loss: {1} loss values:{2}".format(iter,np.mean(loss_per_epsilon_matrix[i]),loss_per_epsilon_matrix[i]))
 
@@ -326,17 +407,19 @@ def main():
     bit_rate_lst = [4, 8, 16, 32]
 
     img_lst = list(range(30, 45))
-    epsilon_lst = [333]
-    bit_rate_lst = [16]
+    epsilon_lst = [333,3333,10000]
+    bit_rate_lst = [8,16]
     iteration_lst = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
-    # iteration_lst = [0,1,2,3]
-    # img_lst = [16]
+    iteration_lst = [0,1,2]
+    img_lst = [16,17,18]
     # run_epsilon_dlg_idlg_tests(,[0.1,0.08,0.06,0.03,0.01,0.003,0.001,0.0003,0.0001],'DLG')
     # run_epsilon_dlg_idlg_tests(img_lst, epsilon_lst, bit_rate_lst=bit_rate_lst, algo=  'DLG')
 
     profiler = cProfile.Profile()
     profiler.enable()
     run_iteration_dlg_idlg_tests(img_lst, iteration_lst, 'DLG')
+
+    # produce_image_pentas(img_lst, iteration_lst, epsilon_lst, bit_rate_lst)
     profiler.disable()
     stats = pstats.Stats(profiler).sort_stats('cumtime')
     stats.dump_stats('../output/cpu-export-data')

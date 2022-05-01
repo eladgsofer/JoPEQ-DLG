@@ -87,6 +87,8 @@ class dlg_cls():
         self.gt_label = torch.Tensor([self.dst[img_index][1]]).long().to(device)
         self.gt_label = self.gt_label.view(1, )
         self.gt_onehot_label = label_to_onehot(self.gt_label)
+        return self.dst[self.img_index][0]
+
     def config_model(self,model=None,seed=1234):
         if model == None:
             self.model = LeNet().to(device)
@@ -123,7 +125,11 @@ class dlg_cls():
         # luckily the state dict is saved in exactly the same order as the gradients are so we can easily transfer them
         self.dy_dx = tuple([fed_ler_grad_state_dict[key] for key in fed_ler_grad_state_dict.keys()])
         return self.dy_dx
-    def apply_noise(self,epsilon,bit_rate):
+    def apply_noise(self, epsilon, bit_rate, noise_func = None, args = None):
+        if noise_func != None:
+            self.noise_func = noise_func
+        if args != None:
+            self.args = args
         if (epsilon > 0 or self.args.attack=="quantization"):
             self.original_dy_dx = self.noise_func(list((_.detach().clone() for _ in self.dy_dx)), epsilon, bit_rate, self.args)
         else:
@@ -137,13 +143,12 @@ class dlg_cls():
 
         optimizer = torch.optim.LBFGS([dummy_data, dummy_label])
 
-        history = []
+        # history = []
         current_loss = torch.Tensor([1])
         iters = 0
-        # for iters in range(num_of_iterations):
-        # while (iters < num_of_iterations):
         MSE=0
         SSIM=0
+        # while (iters < num_of_iterations):
         while (current_loss.item() > 0.00001 and iters < num_of_iterations):
 
             def closure():
@@ -170,24 +175,9 @@ class dlg_cls():
                 MSE = mse(reconstructedIm,groundTruthIm)
                 SSIM = ssim(reconstructedIm,groundTruthIm,channel_axis=2)
                 print(iters, "%.4f" % current_loss.item()," MSE {0:.4f}, SSIM {1:.4f}".format(MSE,SSIM))
-                history.append(self.tt(dummy_data[0].cpu()))
+                # history.append(self.tt(dummy_data[0].cpu()))
             iters = iters + 1
-        # plt.figure()
-        # plt.subplot(1, 2, 1)
-        # plt.imshow(tt(dummy_data[0].cpu()))
-        # plt.axis('off')
-        #
-        # plt.subplot(1, 2, 2)
-        # plt.imshow(dst[img_index][0])
-
-        # plt.axis('off')
-        # plt.figure(figsize=(12, 8))
-        # for i in range(round(iters / 10)):
-        #     plt.subplot(int(np.ceil(iters / 100)), 10, i + 1)
-        #     plt.imshow(history[i])
-        #     plt.title("iter=%d" % (i * 10))
-        #     plt.axis('off')
-
+        self.final_image = self.tt(dummy_data[0].cpu())
         return current_loss.item(), MSE, SSIM
 
 
