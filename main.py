@@ -217,7 +217,16 @@ def train_model(image_number_list,iteration_list, algo='DLG'):
 def run_iteration_dlg_idlg_tests(image_number_list,iteration_list, algo='DLG'):
 
     plt.xscale("log")
-    loss_per_iter_matrix = np.zeros([len(iteration_list),len(image_number_list)])
+    # Vanilla DLG
+    dlg_loss_per_iter_matrix = np.zeros([len(iteration_list),len(image_number_list)])
+    dlg_mse_per_iter_matrix = np.zeros([len(iteration_list), len(image_number_list)])
+    dlg_ssim_per_iter_matrix = np.zeros([len(iteration_list), len(image_number_list)])
+
+    # JoPEQ
+    jopeq_loss_per_iter_matrix = np.zeros([len(iteration_list),len(image_number_list)])
+    jopeq_mse_per_iter_matrix = np.zeros([len(iteration_list), len(image_number_list)])
+    jopeq_ssim_per_iter_matrix = np.zeros([len(iteration_list), len(image_number_list)])
+
     grads_norm_mat = np.zeros([len(iteration_list), len(image_number_list)])
     # opening datasets
     dataset = getattr(datasets, args.dataset)
@@ -236,6 +245,7 @@ def run_iteration_dlg_idlg_tests(image_number_list,iteration_list, algo='DLG'):
         args=args,
         noise_func=add_uveqFed)
     dlg.config_model()
+
     for i, iter in enumerate(iteration_list):
         print("iteration number {0}".format(i))
         if i > 0:
@@ -244,32 +254,83 @@ def run_iteration_dlg_idlg_tests(image_number_list,iteration_list, algo='DLG'):
             dlg.load_image(n)
             gradients = dlg.compute_gradients()
             grads_norm_mat[i,j] = sum([x.norm(p=2) ** 2 for x in gradients]) ** (0.5)
-            (_,_,loss_per_iter_matrix[i, j]) = dlg.dlg()
+
+            # Run Vanilla DLG
+            loss, mse, ssim = dlg.dlg()
+
+            dlg_loss_per_iter_matrix[i, j] = loss
+            dlg_mse_per_iter_matrix[i,j] = mse
+            dlg_ssim_per_iter_matrix[i, j] = ssim
+
+            # Run DLG with JoPEQ noised gradients
+            args.attack = 'JOPEQ'
+            args.privacy_noise = 'PPN'
+            dlg.apply_noise(333, 8, args=args)
+
+            loss, mse, ssim = dlg.dlg()
+            jopeq_loss_per_iter_matrix[i, j] = loss
+            jopeq_mse_per_iter_matrix[i,j] = mse
+            jopeq_ssim_per_iter_matrix[i, j] = ssim
+
         #loss_per_iter_matrix[i, j] = i+j
         # print("iter:{0} average loss: {1} loss values:{2}".format(iter,np.mean(loss_per_epsilon_matrix[i]),loss_per_epsilon_matrix[i]))
 
     # save the loss into a matrix
-    # with open('output/epsilon_mat'+algo+'.npy', 'wb') as f:
-    #     np.save(f, loss_per_epsilon_matrix)
-    # np.savetxt('output/epsilon_mat'+algo+'.txt', loss_per_epsilon_matrix, fmt='%1.4e')
-    # with open('output/ITER_MAT_'+algo+'_new.npy', 'wb') as f:
-    #     pickle.dump(loss_per_iter_matrix, f)
-    # with open('output/ITER_GRAD_MAT_NORM_'+algo+'_new.npy', 'wb') as f:
-    #     pickle.dump(grads_norm_mat, f)
+
+    with open('output/ITER_MAT_LOSS_'+algo+'_VANILLA.npy', 'wb') as f:
+        pickle.dump(dlg_loss_per_iter_matrix, f)
+    with open('output/ITER_MAT_MSE_'+algo+'_VANILLA.npy', 'wb') as f:
+        pickle.dump(dlg_mse_per_iter_matrix, f)
+    with open('output/ITER_MAT_SSIM_'+algo+'_VANILLA.npy', 'wb') as f:
+        pickle.dump(dlg_ssim_per_iter_matrix, f)
+
+    with open('output/ITER_MAT_LOSS_'+algo+'_JOPEQ.npy', 'wb') as f:
+        pickle.dump(jopeq_loss_per_iter_matrix, f)
+    with open('output/ITER_MAT_MSE_'+algo+'_JOPEQ.npy', 'wb') as f:
+        pickle.dump(jopeq_mse_per_iter_matrix, f)
+    with open('output/ITER_MAT_SSIM_'+algo+'_JOPEQ.npy', 'wb') as f:
+        pickle.dump(jopeq_ssim_per_iter_matrix, f)
+
+    with open('output/ITER_GRAD_MAT_NORM_'+algo+'_new.npy', 'wb') as f:
+        pickle.dump(grads_norm_mat, f)
     # plot the accuracy
-    plt.figure()
+
     font = {
         'weight': 'bold',
         'size': 16}
-
+    plt.figure()
     plt.rc('font', **font)
-    plt.plot(iteration_list,np.mean(np.log(loss_per_iter_matrix),axis=1),linewidth=3)
-    plt.title("dlg loss after training the model")
+    plt.plot(iteration_list,np.mean(np.log(dlg_loss_per_iter_matrix),axis=1),linewidth=3)
+    plt.plot(iteration_list, np.mean(np.log(jopeq_loss_per_iter_matrix), axis=1),linewidth=3)
+    plt.title("dlg vanilla ssim vs jopeq loss")
     plt.grid(visible=True,axis="y")
     plt.grid(visible=True,which='minor')
-    plt.plot(iteration_list,np.mean(grads_norm_mat,axis=1),linewidth=3)
     plt.xlabel("epoches")
     plt.ylabel("loss")
+
+    plt.figure()
+    plt.rc('font', **font)
+    plt.plot(iteration_list,np.mean (np.log(dlg_mse_per_iter_matrix),axis=1),linewidth=3)
+    plt.plot(iteration_list, np.mean(np.log(jopeq_mse_per_iter_matrix), axis=1),linewidth=3)
+    plt.title("dlg vanilla MSE vs JoPEQ MSE")
+    plt.grid(visible=True,axis="y")
+    plt.grid(visible=True,which='minor')
+    plt.xlabel("epoches")
+    plt.ylabel("log(MSE)")
+
+    plt.figure()
+    plt.rc('font', **font)
+    plt.plot(iteration_list,np.mean(np.log(dlg_ssim_per_iter_matrix),axis=1),linewidth=3)
+    plt.plot(iteration_list, np.mean(np.log(jopeq_ssim_per_iter_matrix), axis=1),linewidth=3)
+    plt.title("dlg vanilla ssim vs jopeq ssim")
+    plt.grid(visible=True,axis="y")
+    plt.grid(visible=True,which='minor')
+    plt.xlabel("epoches")
+    plt.ylabel("ssim")
+
+    plt.figure()
+    plt.plot(iteration_list,np.mean(grads_norm_mat,axis=1),linewidth=3)
+
     plt.show()
 
 
@@ -385,14 +446,77 @@ def run_dlg_idlg_tests(image_number_list,check_point_list,model_number, algo='DL
     plt.ylabel("loss")
 
 import cProfile,pstats
+
+
+
+def plot_graphs(algo, iteration_list):
+    with open('output/ITER_MAT_LOSS_' + algo + '_VANILLA.npy', 'rb') as f:
+        dlg_loss_per_iter_matrix = pickle.load(f)
+    with open('output/ITER_MAT_MSE_' + algo + '_VANILLA.npy', 'rb') as f:
+        dlg_mse_per_iter_matrix = pickle.load(f)
+    with open('output/ITER_MAT_SSIM_' + algo + '_VANILLA.npy', 'rb') as f:
+        dlg_ssim_per_iter_matrix = pickle.load(f)
+    with open('output/ITER_MAT_LOSS_' + algo + '_JOPEQ.npy', 'rb') as f:
+        jopeq_loss_per_iter_matrix = pickle.load(f)
+    with open('output/ITER_MAT_MSE_' + algo + '_JOPEQ.npy', 'rb') as f:
+        jopeq_mse_per_iter_matrix = pickle.load(f)
+    with open('output/ITER_MAT_SSIM_' + algo + '_JOPEQ.npy', 'rb') as f:
+        jopeq_ssim_per_iter_matrix = pickle.load(f)
+    with open('output/ITER_GRAD_MAT_NORM_' + algo + '_new.npy', 'rb') as f:
+        grads_norm_mat = pickle.load(f)
+
+    font = {
+        'weight': 'bold',
+        'size': 16}
+    plt.figure()
+    plt.rc('font', **font)
+    plt.plot(iteration_list, np.mean(np.log(dlg_loss_per_iter_matrix), axis=1),
+             linewidth=3)
+    plt.plot(iteration_list,
+             np.mean(np.log(jopeq_loss_per_iter_matrix), axis=1), linewidth=3)
+    plt.title("DLG Vanilla vs JoPEQ - Gradient Loss Metric")
+    plt.grid(visible=True, axis="y")
+    plt.grid(visible=True, which='minor')
+    plt.xlabel("epoches")
+    plt.ylabel("loss")
+
+    plt.figure()
+    plt.rc('font', **font)
+    plt.plot(iteration_list, np.mean(np.log(dlg_mse_per_iter_matrix), axis=1),
+             linewidth=3)
+    plt.plot(iteration_list, np.mean(np.log(jopeq_mse_per_iter_matrix), axis=1),
+             linewidth=3)
+    plt.title("dlg vanilla MSE vs JoPEQ MSE")
+    plt.grid(visible=True, axis="y")
+    plt.grid(visible=True, which='minor')
+    plt.xlabel("epoches")
+    plt.ylabel("log(MSE)")
+
+    plt.figure()
+    plt.rc('font', **font)
+    plt.plot(iteration_list, np.mean(np.log(dlg_ssim_per_iter_matrix), axis=1),
+             linewidth=3)
+    plt.plot(iteration_list,
+             np.mean(np.log(jopeq_ssim_per_iter_matrix), axis=1), linewidth=3)
+    plt.title("DLG vanilla vs JoPEQ SSIM")
+    plt.grid(visible=True, axis="y")
+    plt.grid(visible=True, which='minor')
+    plt.xlabel("epoches")
+    plt.ylabel("SSIM")
+
+    plt.figure()
+    plt.plot(iteration_list, np.mean(grads_norm_mat, axis=1), linewidth=3)
+
+    plt.show()
+
+
 def main():
     number_of_images = 1
     # image_number_list = [random.randrange(1, 1000, 1) for i in range(number_of_images)]
-    image_number_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 508]
+
     # image_number_list = [3767]
     # epsilon_list = [0.1,0.08,0.06,0.03,0.01,0.003,0.001,0.0003,0.0001]
     epsilon_list = [0]
-    print("chosen images: {0}".format(image_number_list))
     check_point_list = [i for i in range(0, 400, 100)]
     model_number = 813665
     # run_dlg_idlg_tests(image_number_list,check_point_list,model_number,algo='DLG')
@@ -406,18 +530,19 @@ def main():
     epsilon_lst = [10, 33, 100, 333, 1000, 3333, 10000, 100000]
     bit_rate_lst = [4, 8, 16, 32]
 
-    img_lst = list(range(30, 45))
+    img_lst = list(range(30, 100))
     epsilon_lst = [333,3333,10000]
     bit_rate_lst = [8,16]
     iteration_lst = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
-    iteration_lst = [0,1,2]
-    img_lst = [16,17,18]
+    iteration_lst = list(range(25))
+    #img_lst = [16,17,18,19,20]
     # run_epsilon_dlg_idlg_tests(,[0.1,0.08,0.06,0.03,0.01,0.003,0.001,0.0003,0.0001],'DLG')
     # run_epsilon_dlg_idlg_tests(img_lst, epsilon_lst, bit_rate_lst=bit_rate_lst, algo=  'DLG')
-
+    print("chosen images: {0}".format(img_lst))
     profiler = cProfile.Profile()
     profiler.enable()
-    run_iteration_dlg_idlg_tests(img_lst, iteration_lst, 'DLG')
+
+    run_iteration_dlg_idlg_tests(img_lst, list(range(30)), 'DLG')
 
     # produce_image_pentas(img_lst, iteration_lst, epsilon_lst, bit_rate_lst)
     profiler.disable()
@@ -429,6 +554,7 @@ def main():
     # run_dlg(K)
     # plt.show()
     pass
+
 
 if __name__ == "__main__":
     main()

@@ -108,6 +108,7 @@ class dlg_cls():
                 criterion=self.criterion,
                 epoch_num=learning_epoches,
                 test_loader=self.test_loader)
+
             return self.model.test_nn(self.test_loader, self.criterion)
     def compute_gradients(self):
         self.pred = self.model(self.gt_data)
@@ -115,6 +116,7 @@ class dlg_cls():
         self.dy_dx = torch.autograd.grad(y, self.model.parameters())
         self.original_dy_dx = self.dy_dx
         return self.dy_dx
+
     def load_model_and_gradients(self,read_grads):
         grad_checkpoint_address = "./fed-ler_checkpoints/grad/checkpoint{0}_{1}.pk".format(model_number, read_grads)
         global_checkpoint_address = "./fed-ler_checkpoints/global/checkpoint{0}_{1}.pk".format(model_number, read_grads)
@@ -173,10 +175,11 @@ class dlg_cls():
                 RecImShape = reconstructedIm.shape
                 groundTruthIm = np.asarray(self.dst[self.img_index][0]).reshape((RecImShape[0], RecImShape[1], RecImShape[2]))
                 MSE = mse(reconstructedIm,groundTruthIm)
-                SSIM = ssim(reconstructedIm,groundTruthIm,channel_axis=2)
+                SSIM = ssim(reconstructedIm,groundTruthIm,channel_axis=2, multichannel=True)
                 print(iters, "%.4f" % current_loss.item()," MSE {0:.4f}, SSIM {1:.4f}".format(MSE,SSIM))
                 # history.append(self.tt(dummy_data[0].cpu()))
             iters = iters + 1
+
         self.final_image = self.tt(dummy_data[0].cpu())
         return current_loss.item(), MSE, SSIM
 

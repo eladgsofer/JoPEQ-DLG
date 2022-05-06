@@ -86,8 +86,9 @@ class LeNet(nn.Module):
         for epoch in range(epoch_num):
             correct = 0
             n = 0
-            train_loss = 0
+            epoch_loss = 0
             accuracy_list = []
+
 
             for batch_idx, (data, label) in enumerate(train_loader):
                 # send to device
@@ -99,7 +100,10 @@ class LeNet(nn.Module):
 
                 optimizer.zero_grad()
                 output = self(data)
-                train_loss = + criterion(output, onehot_label)
+
+                train_loss = criterion(output, onehot_label)
+
+                epoch_loss+=train_loss
                 train_loss.backward()
                 optimizer.step()
 
@@ -117,14 +121,15 @@ class LeNet(nn.Module):
                                    100. * batch_idx / len(train_loader),
                             train_loss.item()))
 
-            train_loss /= len(train_loader.dataset)
+
+            epoch_loss /= len(train_loader.dataset)
             accuracy = 100. * correct / len(train_loader.dataset)
             accuracy_list.append(accuracy)
             # self.test_nn(test_loader,criterion)
 
             print(
                 '\nTrain set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-                    train_loss, correct, len(train_loader.dataset), accuracy))
+                    epoch_loss, correct, len(train_loader.dataset), accuracy))
 
 
 '''ResNet in PyTorch.
