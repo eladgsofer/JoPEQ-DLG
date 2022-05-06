@@ -115,6 +115,12 @@ def produce_image_pentas(image_number_list,iteration_list,epsilon_list,bit_rate_
         if i > 0:
             dlg.train_model(1)
         for j, n in enumerate(image_number_list):
+            step_size = 1/len(iteration_list)
+            print("testing image number{0} finished {1}%".format(j,round(100*(i*step_size+step_size*n/len(image_number_list)))))
+            now = datetime.now()
+
+            current_time = now.strftime("%H:%M:%S")
+            print("Current Time =", current_time)
             orig_img = dlg.load_image(n)
             dlg.compute_gradients()
 
@@ -148,11 +154,11 @@ def produce_image_pentas(image_number_list,iteration_list,epsilon_list,bit_rate_
 
                     # save the images
                     os.mkdir(dir_path)
-                    orig_img.save(dir_path+"/orig.png")
-                    dlg_only_img.save(dir_path + "/dlg_only.png")
-                    quant_only_img.save(dir_path + "/quantization_only.png")
-                    JOPEQ_only_img.save(dir_path + "/JOPEQ.png")
-                    laplace_only_img.save(dir_path + "/laplace_noise.png")
+                    orig_img.save(dir_path+"/orig-SSIM(1)-MSE(0),.png")
+                    dlg_only_img.save(dir_path + "/dlg_only-SSIM("+str(SSIM_matrix[0, i, j, 0, 0])+")-MSE("+str(MSE_matrix[0, i, j, 0, 0])+").png")
+                    quant_only_img.save(dir_path + "/quantization_only-SSIM("+str(SSIM_matrix[1, i, j, k, 0])+")-MSE("+str(MSE_matrix[1, i, j, k, 0])+").png")
+                    JOPEQ_only_img.save(dir_path + "/JOPEQ-SSIM("+str(SSIM_matrix[3, i, j, k, l])+")-MSE("+str(MSE_matrix[3, i, j, k, l])+").png")
+                    laplace_only_img.save(dir_path + "/laplace_noise-SSIM("+str(SSIM_matrix[2, i, j, k, l])+")-MSE("+str(MSE_matrix[2, i, j, k, l])+").png")
     with open(parent_path+'/loss_mat.npy', 'wb') as f:
         pickle.dump(loss_matrix, f)
     with open(parent_path + '/MSE_mat.npy', 'wb') as f:
@@ -526,20 +532,23 @@ def main():
     model_number = 813665
 
 
-    # imagen ids, epsilon list,
+    # Full test
     epsilon_lst = [10, 33, 100, 333, 1000, 3333, 10000, 100000]
     bit_rate_lst = [4, 8, 16, 32]
+    img_lst = list(range(0, 70))
+    iteration_lst = list(range(30))
 
-    img_lst = list(range(30, 100))
-    epsilon_lst = [333,3333,10000]
-    bit_rate_lst = [8,16]
-    iteration_lst = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
-    iteration_lst = list(range(25))
+    # Sanity Test(comment out when running full test
+    epsilon_lst   = [333]
+    bit_rate_lst  = [8]
+    img_lst       = [0,1,2]
+    iteration_lst = [0]
+
     # run_epsilon_dlg_idlg_tests(img_lst, epsilon_lst, bit_rate_lst=bit_rate_lst, algo=  'DLG')
     print("chosen images: {0}".format(img_lst))
-    profiler = cProfile.Profile()
-    profiler.enable()
-    run_iteration_dlg_idlg_tests(img_lst, list(range(30)), 'DLG')
+    # profiler = cProfile.Profile()
+    # profiler.enable()
+    # run_iteration_dlg_idlg_tests(img_lst, list(range(30)), 'DLG')
     produce_image_pentas(img_lst, iteration_lst, epsilon_lst, bit_rate_lst)
     plt.show()
     pass
