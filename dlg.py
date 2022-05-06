@@ -176,6 +176,7 @@ class dlg_cls():
                 groundTruthIm = np.asarray(self.dst[self.img_index][0]).reshape((RecImShape[0], RecImShape[1], RecImShape[2]))
                 MSE = mse(reconstructedIm,groundTruthIm)
                 SSIM = ssim(reconstructedIm,groundTruthIm,channel_axis=2, multichannel=True)
+
                 print(iters, "%.4f" % current_loss.item()," MSE {0:.4f}, SSIM {1:.4f}".format(MSE,SSIM))
                 # history.append(self.tt(dummy_data[0].cpu()))
             iters = iters + 1
