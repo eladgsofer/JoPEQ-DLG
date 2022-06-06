@@ -127,6 +127,7 @@ class dlg_cls():
         # luckily the state dict is saved in exactly the same order as the gradients are so we can easily transfer them
         self.dy_dx = tuple([fed_ler_grad_state_dict[key] for key in fed_ler_grad_state_dict.keys()])
         return self.dy_dx
+
     def apply_noise(self, epsilon, bit_rate, noise_func = None, args = None):
         if noise_func != None:
             self.noise_func = noise_func
