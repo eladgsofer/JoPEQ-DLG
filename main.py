@@ -548,16 +548,15 @@ def main():
     img_lst       = list(range(0, 3))
     iteration_lst = [0]
 
-    # run_epsilon_dlg_idlg_tests(img_lst, epsilon_lst, bit_rate_lst=bit_rate_lst, algo=  'DLG')
+    run_epsilon_dlg_idlg_tests(img_lst, epsilon_lst, bit_rate_lst=bit_rate_lst, algo=  'DLG')
     print("chosen images: {0}".format(img_lst))
     # profiler = cProfile.Profile()
     # profiler.enable()
     run_iteration_dlg_idlg_tests(img_lst, iteration_lst, algo='DLG', epsilons=epsilon_lst)
-    #produce_image_pentas(img_lst, iteration_lst, epsilon_lst, bit_rate_lst)
+    produce_image_pentas(img_lst, iteration_lst, epsilon_lst, bit_rate_lst)
     plt.show()
     pass
 
 
 if __name__ == "__main__":
     main()
-pass
